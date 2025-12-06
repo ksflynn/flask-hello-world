@@ -34,7 +34,7 @@ def get_trains():
     feed_1_2_3 = NYCTFeed("2")
     sorted_trips = sorted(feed_1_2_3.trips, key=lambda trip: trip.departure_time)
     for trip in sorted_trips:
-        # pre-sorting revision
+        # pre-sorting
         # for trip in feed_1_2_3.trips:
         input = {
             "summary": str(trip)
@@ -47,7 +47,8 @@ def get_trains():
                     arrival_gmt = update.arrival
                     est = pytz.timezone('US/Eastern')
                     arrival_est = datetime.datetime(arrival_gmt.year, arrival_gmt.month, arrival_gmt.day, arrival_gmt.hour, arrival_gmt.minute, arrival_gmt.second, tzinfo=est)
-                    arrival_est = arrival_est.strftime('%m/%d %H:%M')
+                    arrival_est = arrival_est - datetime.timedelta(hours=5)
+                    arrival_est = arrival_est.strftime('%H:%M')
                 else:
                     arrival_est = "N/A"
                 if update.stop_name == 'Grand Army Plaza':
