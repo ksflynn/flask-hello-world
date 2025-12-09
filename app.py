@@ -141,6 +141,7 @@ def get_screenings():
                 clean_venue_title = stripped_venue_title[1].split('<')[0]
 
             if len(detail['media_title_info'].split('<span>')) >= 4:
+                stripped_director = detail['media_title_info'].split('<span>')[1].split('</span>')[0].replace('\\n','')
                 stripped_year = detail['media_title_info'].split('<span>')[2].split('</span>')[0]
                 stripped_runtime = detail['media_title_info'].split('<span>')[3].split('</span>')[0]
                 stripped_format = detail['media_title_info'].split('<span>')[-1].split('</span>')[0]
@@ -148,6 +149,7 @@ def get_screenings():
                 if stripped_format == stripped_runtime or stripped_format == stripped_year:
                     stripped_format = '-'
             else:
+                stripped_director = '-'
                 stripped_year = '-'
                 stripped_runtime = '-'
                 stripped_format = '-'
@@ -156,6 +158,7 @@ def get_screenings():
             day_summary['screenings'].append(
                 {
                     'title': html.unescape(clean_title.strip()),
+                    'director': html.unescape(stripped_director.strip()),
                     'venue_title': html.unescape(clean_venue_title.strip()),
                     'format': detail['media_title_format'] or stripped_format,
                     'link': detail['field_url'],
