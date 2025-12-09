@@ -188,6 +188,8 @@ def get_screenings():
                     'highlight': html.unescape(clean_title.strip()) in highlight_movies
                 }
             )
+            sorted_screenings = sorted(day_summary['screenings'], key=lambda screening: datetime.strptime(screening['start_time'], '%H:%M''%p') if ':' in screening['start_time'] else datetime.strptime(screening['start_time'], '%H''%p'))
+            day_summary['screenings'] = sorted_screenings
         output.append(day_summary)
 
     response = flask.jsonify(output)
