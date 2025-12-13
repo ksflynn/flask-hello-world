@@ -6,24 +6,126 @@ import requests
 from nyct_gtfs.feed import NYCTFeed
 from requests.adapters import HTTPAdapter, Retry
 from letterboxdpy import user as letterboxduser
+import redis
+import json
 
 app = flask.Flask(__name__)
 
-# TODO: add Hacker News scraper endpoint, return +500 point posts on top 5 pages
-#       also return <500 posts with +250 comments
+# LOCAL REDIS BACKUP FOR TESTING
+# app.config['REDIS_URL'] = "redis://localhost:6379/0"
 
+# EXTERNAL URL FOR TESTING LOCALLY
+# app.config['REDIS_URL'] = 'rediss://red-d4udg92li9vc73d3dq5g:UV1ExfzjfZPgLJeE1J307BlwhdC3HyUz@virginia-keyvalue.render.com:6379'
+
+# INTERNAL URL FOR DEPLOYMENT
+app.config['REDIS_URL'] = 'redis://red-d4udg92li9vc73d3dq5g:6379'
+redis_client = redis.from_url(app.config['REDIS_URL'])
+
+# TODO: add daily / half hourly cache refresh cron jobs on screenings and news
+# TODO: add Bluesky trending topics endpoint, get top stories in US, Ireland, and Globally
 # TODO: add Wikipedia scraper endpoint, wiki article of the day / this day in history
-
 # TODO: add Bandsintown scraper, index against digitized music pref catalogue
-
 # TODO: add Moby-Dick API reader, do something fun with it
-
 # TODO: add Gizz Tapes RSS reader, alert to new shows posted
+# TODO: add PSN + NSO + Steam scraper, get last two weeks of activity
+# TODO: add Letterboxd last two weeks of activity
+# TODO: add signs of life endpoint that returns two weeks of game activity + letterboxd activity, 
+#       date of last bluesky post, date of last update to the site
 
+# TODO: add heartbeat on cron-job.org (here or below)
 @app.route('/')
-def health():
+def kpi_ok():
     return 'KPI OK!'
 
+# TODO: add heartbeat on cron-job.org (here or above)
+@app.route('/health-check')
+def health_check():
+    return '', 200
+
+def get_cached_result(key, refresh_only=False):
+    if key == 'trains':
+        # check if key exists with timestamp of -1 minute
+        # if not, get fresh query
+        time = datetime.now() - timedelta(minutes=1)
+        datestring = time.strftime('%Y-%m-%d %H:%M')
+        readable_datestring = time.strftime('%d/%m/%Y %H:%M')
+        minutewise_trains_key = f'{key}_{datestring}'
+        cached_result = redis_client.get(minutewise_trains_key)
+        if cached_result is None:
+            for expired_key in redis_client.scan_iter(f'{key}_*'):
+                redis_client.delete(expired_key)
+            new_result = get_trains().json
+            new_result_bytes = json.dumps(new_result).encode('utf-8')
+            redis_client.set(minutewise_trains_key, new_result_bytes)
+        else:
+            cached_result = json.loads(cached_result.decode('utf-8'))
+    elif key == 'screenings':
+        # check if key exists with timestamp of current day
+        # if not, get fresh query
+        datestring = datetime.now().strftime('%Y-%m-%d')
+        readable_datestring = datetime.now().strftime('%d/%m/%Y')
+        daily_screenings_key = f'{key}_{datestring}'
+        cached_result = redis_client.get(daily_screenings_key)
+        if cached_result is None:
+            for expired_key in redis_client.scan_iter(f'{key}_*'):
+                redis_client.delete(expired_key)
+            new_result = get_screenings().json
+            new_result_bytes = json.dumps(new_result).encode('utf-8')
+            redis_client.set(daily_screenings_key, new_result_bytes)
+        else:
+            cached_result = json.loads(cached_result.decode('utf-8'))
+    elif key == 'hacker-news':
+        # check if key exists from top of hour
+        # TODO: make more clever solution to always get most recent half hour, compare minute vals
+        # if not, get fresh query
+        time = datetime.now().replace(minute=0)
+        datestring = time.strftime('%Y-%m-%d %H:%M')
+        readable_datestring = time.strftime('%d/%m/%Y %H:%M')
+
+        hourly_hacker_news_key = f'{key}_{datestring}'
+        cached_result = redis_client.get(hourly_hacker_news_key)
+        if cached_result is None:
+            for expired_key in redis_client.scan_iter(f'{key}_*'):
+                redis_client.delete(expired_key)
+            new_result = get_hacker_news().json
+            new_result_bytes = json.dumps(new_result).encode('utf-8')
+            redis_client.set(hourly_hacker_news_key, new_result_bytes)
+        else:
+            cached_result = json.loads(cached_result.decode('utf-8'))
+
+    if not refresh_only:
+        result = cached_result or new_result
+        response = {
+            'last_updated': readable_datestring,
+            'result': result
+        }
+        response = flask.jsonify(response)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+
+@app.route('/kpi/trains')
+def get_trains_from_cache_or_live():
+    return get_cached_result('trains')
+
+@app.route('/kpi/screenings')
+def get_screenings_from_cache_or_live():
+    return get_cached_result('screenings')
+
+@app.route('/kpi/hacker-news')
+def get_hacker_news_from_cache_or_live():
+    return get_cached_result('hacker-news')
+
+# TODO: add daily refresh job on cron-job.org
+@app.route('/kpi/screenings/refresh')
+def refresh_screenings():
+    return get_cached_result('screenings', refresh_only=True)
+
+# TODO: add hourly refresh job on cron-job.org
+@app.route('/kpi/hacker-news/refresh')
+def refresh_hacker_news():
+    return get_cached_result('hacker-news', refresh_only=True)
+
+# TODO: DRY out inner methods below repeating daily data insertion
 # TODO: Import static LIRR data
 # TODO: Construct set of West/East Port Washington trains from Penn, Woodside, Bayside
 # TODO: Account for transfers at woodside ^
@@ -32,7 +134,6 @@ def health():
 # TODO: Construct set of trips connecting 2/3 from GAP to Barclays then LIRR to Jamaica
 # TODO: Create graphs of commutes to the above plus movie theaters along different lines
 # TODO: Add projected commute times onto metadata of listings in /screenings endpoint
-@app.route('/kpi/trains')
 def get_trains():
     output = {
         'N-23': {
@@ -120,7 +221,6 @@ def get_trains():
     return response
 
 # TODO: de-dupe some screenings in favor of the one with more metadata
-@app.route('/kpi/screenings')
 def get_screenings():
     highlight_movies = []
     lb_user = letterboxduser.User('flynncredible')
@@ -276,7 +376,6 @@ def get_screenings():
     return response
 
 # TODO: Allow loading of subsequent pages / add timestamps / comments / other metadata?
-@app.route('/kpi/hacker-news')
 def get_hacker_news():
     s = requests.Session()
     retries = Retry(total=5,
@@ -315,11 +414,10 @@ def get_hacker_news():
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
-
 # TODO: auth bearer token grabbing
 # TODO: secret handling to get bearer token (research in Render)
 # @app.route('/kpi/wiki')
-# def get_wiki():
+# def get_wiki_news():
 #     today = datetime.now()
 #     date = today.strftime('%Y/%m/%d')
 #     language_code = 'en' # English
