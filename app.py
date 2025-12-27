@@ -499,7 +499,7 @@ def get_random_moby_dick_sentence():
             sentences.append(sentence)
             sentence = ''
     sentence = sentences[random.randint(0, len(sentences)-1)]
-    clean_sentence = sentence.replace(' .', '.').replace(' !', '!').replace(' ?', '?').replace(' ,', ',').replace(' ;', ';').replace(' \'', '\'').replace('\' ', '\'').replace(' :', ':').replace('( ', '(').replace(' )', ')')
+    clean_sentence = sentence.replace(' .', '.').replace(' !', '!').replace(' ?', '?').replace(' ,', ',').replace(' ;', ';').replace(' \'', '\'').replace('\' ', '\'').replace(' :', ':').replace('( ', '(').replace(' )', ')').replace(' - ', '-')
     clean_sentence = clean_sentence.split('"')[-1]
     
     second_chapter_choice = random.randint(0, len(chapters.chapter_names))
@@ -524,6 +524,7 @@ def get_random_moby_dick_sentence():
             },
         ]
     }
+    random.shuffle(output['choices'])
     response = flask.jsonify(output)
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
